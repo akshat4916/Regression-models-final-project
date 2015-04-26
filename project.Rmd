@@ -1,0 +1,95 @@
+---
+title: "Regression models- Final Project"
+output: html_document
+---
+
+First, we load dataset MTCARS, in  R base package.
+
+```{r}
+library(datasets)
+data(mtcars)
+```
+We note first what variables are in the dataset, and what they measure. mpg = Miles/(US) gallon cyl = Number of cylinders disp = Displacement (cu.in.) hp = Gross horsepower drat = Rear axle ratio wt = Weight (lb/1000) qsec = 1/4 mile time vs = V/S                     am = Transmission (0 = automatic, 1 = manual) gear = Number of forward gears  carb = Number of carburetors
+
+
+##Exploratory data analysis
+We generate scaled boxplots for all the continuous variables, and report tables for the five categorical variables in the Appendix.
+```{r}
+par(mfrow = c(1, 2))
+with(mtcars, boxplot(mpg/10, disp/50, hp/50, drat, wt, qsec/5, main = "Scaled boxplots; mtcars"), xlab = "Continuous variable", ylab = "Scale (adjusted to allow simultaneous display")
+axisnames <- c("MPG/10", "DISP/50", "HP/50", "drat", "wt", "qsec/5")
+axis(1, at = c(1, 2, 3, 4, 5, 6), labels = axisnames, las = 2, cex.axis = 0.9,tck = -0.01)
+pairs(mtcars)
+```
+
+We see from scaled boxplots that the continuous variables are skew, and outlying values for horsepower, weight, and quarter mile speed. Transformations may be required, but we leave this for after we have looked at bivariate data. We note from the Appendix that  categorical variables have sufficient frequencies in all cells for  regression models and are ordinal, so usable in linear models.  
+We also  examine bivariate plots of variables. We see a relationship between (automatic vs manual) transmission and fuel consumption ; manual transmissions yielding higher values of MPG.  However, there are  relationships between fuel consumption and other variables (cylinders, engine displacement, weight).  Transmission  seems to be correlated with some of these potential predictors, so an important question is to what extent transmission independently affects fuel economy. 
+We now ascertain whether fuel consumption differs between manual and automatic transmission cars, and quantify this.
+
+
+
+##Regression model of transmission on fuel efficiency
+We construct a simple regression model with transmission as predictor (coded as 1 or 0, where 1 is manual transmission), and fuel economy as outcome (miles achieved per gallon of fuel, MPG).
+```{r}
+mtcarsmodel1 <- lm(mpg ~ am, data = mtcars)
+summary(mtcarsmodel1)
+```
+
+Transmission accounts for 36% of the variance in fuel consumption, which is statistically significantly better than chance (p < .0003). The intercept and slope coefficients show that automatic transmissions achieve 17.147 miles per gallon fuel economy (the reference group), on average, and that manual transmission cars achieve 17.147 + 7.245 = 24.39 miles per gallon fuel economy, on average.
+These are point estimates, and would be better expressed as 95% Confidence Intervals, for which we use the t.test method in R
+
+```{r}
+attach(mtcars)
+y1 <- mpg[am == 0]
+y2 <- mpg[am == 1]
+x1 <- t.test(y1, mu = 0)
+x2 <- t.test(y2, mu = 0)
+x1$conf.int
+x2$conf.int
+```
+from which we can see that the 95% CI for automatic transmission is (15.3, 19), and for manual transmission is (20.67, 28.12). This is evidence that manual transmission yields better fuel economy, but this proposition needs to be tested
+
+##Regression models to test unique effect on fuel efficiency
+We have the difficult task of choosing additional variables that might account for the difference we have observed between manual and automatic transmissions.  This should be done on theoretical grounds: we argue that automatic transmissions may be found in cars that are heavier in weight, or that have greater engine displacement. 
+We test the relationship between transmission and fuel economy by constructing two baseline regression models with weight or engine displacement as a predictor, and then an augmented model that adds automatic/manual transmission as a variable. We note from the scatterplots, however, that weight and engine displacement appear to be related to MPG in a non-linear manner, and we will therefore inverse-transform fuel efficiency when modeling it.
+
+```{r}
+mtcarsbasemodel1 <- lm(1/mpg ~ wt, data = mtcars)
+mtcarsaugmodel1 <- lm(1/mpg ~ wt + am, data = mtcars)
+anova(mtcarsbasemodel1, mtcarsaugmodel1)
+mtcarsbasemodel2 <- lm(1/mpg ~ disp, data = mtcars)
+mtcarsaugmodel2 <- lm(1/mpg ~ disp + am, data = mtcars)
+anova(mtcarsbasemodel2, mtcarsaugmodel2)
+```
+Each of these analyses suggests that whether a car has automatic or manual transmission does not affect fuel consumption AFTER one controls for eitherweight or engine displacement.  Specifically, we enter weight of car as a predictor as a preliminary model, and then create a second model that has both weight of car and automatic/manual transmission as a second predictor. The second model does not improve (F = 1.65, df=1,30, p > .20)  A similar analysis for engine displacement and transmission shows that adding the transmission variable does not improve the model (F < 1)
+
+##Further regression models of fuel efficiency
+We pursue the question a little further and see whether we can build a model that accounts for fuel consumption on the basis of the observed variables in the dataset mtcars.  We reason as follows: cylinders and engine displacement are related, so we consider only engine displacement. Horsepower is likely to be a function of engine displacement, weight, and number of carburetors, so we add number of carburetors but not horsepower (it is an outcome, not a physical property of the engine).  A similar argument can be made to reject qsec.  We start by testing whether there is evidence to include both weight and displacement in a model, with a test of model difference in a hierarchical sequence.
+
+```{r}
+mtcarsbasemodel3 <- lm(1/mpg ~ wt, data = mtcars)
+mtcarsaugmodel3 <- lm(1/mpg ~ wt + disp, data = mtcars)
+anova(mtcarsbasemodel3, mtcarsaugmodel3)
+```
+This result tells us that we can include weight, and displacement as predictors, they each contribute uniquely to the model.
+
+We now add all remaining variables in our analysis above as a block to our new base model. If the block improves model fit significantly, we will check individual regression coefficients to see if other variables are worth retaining.
+
+```{r}
+mtcarsbasemodel4 <- lm(1/mpg ~ wt + disp, data = mtcars)
+mtcarsaugmodel4 <- lm(1/mpg ~ wt + disp + drat + vs + gear + carb, data = mtcars)
+anova(mtcarsbasemodel4, mtcarsaugmodel4)
+```
+
+The augmented model does not improve the degree of fit (F = 1.21, df = 4,25, p > .33). We therefore accept the baseline model with weight and displacement as predictors, and we look more carefully at it.
+
+```{r}
+summary(mtcarsbasemodel4)
+```
+The model explains 83% of the variance, and each of the coefficients for weight and engine displacement is statistically significantly greater than 0. We need to consider some model diagnostics, and compute these, which are reported in the Appendix. There may be problems with this model. Standardized residuals do not exhibit a cumulative distribution that matched the Normal distribution (there are some points clearly lower than the diagonal line). There also appear to be potential outliers in the various residual plots. However, the dataset is very small (only 32 cases), and it does not seem justified to drop any of the cases for this analysis. An examination of the dfFits and dfBeta statistics might tell us something, but with such a small dataset it does not seem warranted.
+
+##APPENDIX - additional data displays
+```{r}
+par(mfrow = c(2, 2))
+plot(mtcarsbasemodel4)
+```
